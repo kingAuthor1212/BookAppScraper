@@ -4,9 +4,6 @@ import scrapy
 from scrapy.selector import Selector
 import re
 
-
-@app.route("/", methods=["GET"])
-
 class BookpdfspiderSpider(scrapy.Spider):
     name = 'bookpdfspider'
     allowed_domains = ['pdfdrive.com']
@@ -68,3 +65,13 @@ class BookpdfspiderSpider(scrapy.Spider):
         self.logger.info(f'Saving PDF: {path}')
         with open(path, 'wb') as f:
             f.write(response.body)
+            
+
+
+if __name__ == '__main__':
+    from scrapy.utils.project import get_project_settings
+    from scrapy.crawler import CrawlerProcess
+
+    process = CrawlerProcess(get_project_settings())
+    process.crawl(BookpdfspiderSpider)
+    process.start()

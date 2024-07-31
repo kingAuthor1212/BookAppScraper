@@ -71,14 +71,21 @@ useEffect(() => {
             return searchBookName.toLowerCase() === '' ? book : book.title.toLowerCase().includes(searchBookName)
           }).map(
             book => (
-              <div className="book" key={book.id}>
+              <div className="book_info">
+                           <div className="book" key={book.id}>
                 {book.cover && <img src={book.cover} alt="" />}
-                <h2>{book.title}</h2>
-                <p>{book.desc}</p>
-                <span>${book.price}</span>
+
+                <div className="book_details">
+                   <h2 className='title'>{book.title}</h2>
+                  <p className='description'>{book.desc}</p>   <span>${book.price}</span>
+                </div>
+              
+             
                 {/* <button className='update' onClick={() => deleteBook(book.id)}>Delete</button> */}
                 <button className='update' onClick={() => handleDownload(book.urldownload)}>Download</button>
               </div>
+              </div>
+   
             )
           )
         }
