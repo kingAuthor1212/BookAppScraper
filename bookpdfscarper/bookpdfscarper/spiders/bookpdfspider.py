@@ -1,77 +1,59 @@
-from flask import app
-from requests import request
 import scrapy
-from scrapy.selector import Selector
-import re
+import json
 
 class BookpdfspiderSpider(scrapy.Spider):
     name = 'bookpdfspider'
     allowed_domains = ['pdfdrive.com']
     start_urls = ['https://www.pdfdrive.com/']
 
+    def __init__(self, search_query=None, *args, **kwargs):
+        super(BookpdfspiderSpider, self).__init__(*args, **kwargs)
+        self.search_query = search_query or 'rich dad poor'
+        self.book_info = {}
+
     def parse(self, response):
-        # Search for "rich dad poor" on the homepage
-        search_url = 'https://www.pdfdrive.com/search?q=rich+dad+poor'
+        search_url = f'https://www.pdfdrive.com/search?q={self.search_query.replace(" ", "+")}'
         yield scrapy.Request(search_url, callback=self.parse_search_results)
 
     def parse_search_results(self, response):
-        # Find the link to the "Rich Dad Poor Dad" book page
-        book_link = response.xpath('//a[contains(@href, "rich-dad-poor-dad-e")]/@href').get()
+        book_link = response.xpath('//div[contains(@class, "file-right")]/a/@href').get()
         if book_link:
             book_url = response.urljoin(book_link)
+            self.book_info['book_link'] = book_url
             yield scrapy.Request(book_url, callback=self.parse_book_page)
 
     def parse_book_page(self, response):
-        # Find the download link on the book page
-        download_link = response.xpath('//a[contains(@href, "rich-dad-poor-dad-d")]/@href').get()
+        self.book_info['name'] = response.xpath('//h1[@class="ebook-title"]/text()').get().strip()
+        self.book_info['image'] = response.urljoin(response.xpath('//img[@class="ebook-img"]/@src').get())
+        
+        download_link = response.xpath('//a[contains(@class, "btn-download")]/@href').get()
         if download_link:
             download_url = response.urljoin(download_link)
-            yield scrapy.Request(download_url, callback=self.parse_download_page)
+            yield scrapy.Request(download_url, callback=self.final_before_download)
             
-    def parse_download_page(self, response):
-        # Find the final download URL on the download page
-        download_link = response.css('a[onclick*="AiD("]::attr(href)').get()
-        print(download_link)
+    def final_before_download(self, response):
+        download_link = response.xpath('//a[@type="button" and @class="btn btn-primary btn-user" and contains(@href, "download.pdf")]/@href').get()
         if download_link:
-            print(f"Download link: {download_link}")
-            
-        # download_button = response.xpath('//div[@class="btn-group"]//a[@type="button" and @class="btn btn-primary btn-user" and contains(@href, "download.pdf")]/@href').get()
-        # if download_button:
-        #     download_url = response.urljoin(download_button)
-        #     yield scrapy.Request(download_url, callback=self.save_pdf)
-        # else:
-        #     self.logger.warning("Failed to find the download link on the page")
-            
-    # def parse_download_page(self, response):
-    #     # Find the final download URL on the download page
-    #     download_url = response.xpath('//a[contains(@href, "download.pdf")]/@href').get()
-    #     print(download_url)
-    #     if download_url:
-    #         yield scrapy.Request(response.urljoin(download_url), callback=self.save_pdf)
-    #     else: print("did reach but failed to get the href to download the book")
-            
-    # def parse_bok_page(self, response):
-    #     # Find the download link button on the book page
-    #     download_link = response.xpath('//div[@class="btn-group"]//a[@type="button" and @class="btn btn-primary btn-user" and contains(@href, "download.pdf")]/@href').get()
-    #     print(response)
-    #     if download_link:
-    #         download_url = response.urljoin(download_link)
-    #         yield scrapy.Request(download_url, callback=self.save_pdf)
-    #     else: print("didnt get anything")
+            self.book_info['download_link'] = response.urljoin(download_link)
+            self.parse_book_page()
+        
+    
+    def parse_book_page(self, response):
+        self.book_info = {}
+        
+        # Print response content for debugging
+        print(response.text)
 
-    def save_pdf(self, response):
-        # Save the PDF file
-        path = re.findall(r'/([\w_-]+\.pdf)', response.url)[0]
-        self.logger.info(f'Saving PDF: {path}')
-        with open(path, 'wb') as f:
-            f.write(response.body)
-            
+        try:
+            self.book_info['name'] = response.css('h1.ebook-title::text').get().strip()
+        except AttributeError:
+            self.book_info['name'] = 'Title not found'
 
+        self.book_info['author'] = response.css('div.ebook-author span::text').get()
+        self.book_info['pages'] = response.css('span.info-green::text').re_first(r'(\d+) Pages')
 
-if __name__ == '__main__':
-    from scrapy.utils.project import get_project_settings
-    from scrapy.crawler import CrawlerProcess
+        # Save to JSON file
+        with open('book_info.json', 'w') as f:
+            json.dump(self.book_info, f)
 
-    process = CrawlerProcess(get_project_settings())
-    process.crawl(BookpdfspiderSpider)
-    process.start()
+        yield self.book_info
